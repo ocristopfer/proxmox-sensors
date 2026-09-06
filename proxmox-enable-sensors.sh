@@ -790,6 +790,7 @@ sub strip {
     $t =~ s{[ \t]*// PVE-SENSORS-MOD-BEGIN\n.*?// PVE-SENSORS-MOD-END\n}{}sg;
     $t =~ s{[ \t]*// PVE-SENSORS-FIELDS-BEGIN\n.*?// PVE-SENSORS-FIELDS-END\n}{}sg;
     $t =~ s{[ \t]*// PVE-SENSORS-CHART-BEGIN\n.*?// PVE-SENSORS-CHART-END\n}{}sg;
+    $t =~ s{(minHeight:[ \t]*)\d+,[ \t]*// PVE-SENSORS-MOD minHeight was (\d+)}{$1$2,}g;
     $t =~ s{(height:[ \t]*)\d+,[ \t]*// PVE-SENSORS-MOD height was (\d+)}{$1$2,}g;
     return $t;
 }
@@ -824,14 +825,16 @@ my $snippet = do { local $/; <$sf> }; close $sf;
 my $sv = index($new, "Ext.define('PVE.node.StatusView'");
 die "não encontrei 'PVE.node.StatusView' em $file — versão do PVE incompatível\n" if $sv < 0;
 
+my $status_height = 0;
+
 # cabe a linha nova sem cortar o painel (reversível pelo comentário)
 if (substr($new, $sv, 2000) =~ /(\n[ \t]*height:[ \t]*)(\d+)(,)/) {
     my ($pre, $h) = ($1, $2);
     my $start = $sv + $-[0];
     my $len   = $+[0] - $-[0];
-    my $nh = $panel_abs ? $panel_abs : $h + $panel_bump;
-    substr($new, $start, $len) = $pre . $nh . ", // PVE-SENSORS-MOD height was $h";
-    print "OK    altura do StatusView: $h -> $nh\n";
+    $status_height = $panel_abs ? $panel_abs : $h + $panel_bump;
+    substr($new, $start, $len) = $pre . $status_height . ", // PVE-SENSORS-MOD height was $h";
+    print "OK    altura do StatusView: $h -> $status_height\n";
 } else {
     print "WARN  não achei 'height:' no StatusView — o painel pode cortar a linha nova\n";
 }
@@ -874,12 +877,38 @@ if (defined $fields_json && length $fields_json) {
                         . "$ind    title: gettext('Temperatures') + ' (\\u00b0C)',\n"
                         . "$ind    fields: [$fields_json],\n"
                         . "$ind    fieldTitles: [$titles_json],\n"
+                        # Sem seriesConfig e sem axes proprios: assim o painel usa
+                        # exatamente o estilo padrao do proxmoxRRDChart (areas
+                        # preenchidas, opacity 0.6, eixo comecando em zero), igual
+                        # aos graficos de CPU Usage / Server Load / Memory usage.
                         . "$ind    store: rrdstore,\n"
                         . "$ind},\n"
                         . "$ind// PVE-SENSORS-CHART-END\n";
                     print "OK    painel 'Temperatures' -> Summary\n";
                 } else {
                     print "WARN  não achei proxmoxRRDChart no Summary — painel NÃO instalado\n";
+                }
+
+                # O 'itemcontainer' do Summary usa layout 'column' (floats CSS) e
+                # TODAS as celulas -- inclusive o proprio StatusView -- herdam o
+                # mesmo minHeight. De fabrica o painel (350) cabia na celula (360).
+                # Ao cresce-lo para caber as temperaturas ele passa a estourar a
+                # celula, as linhas desalinham e sobra um buraco na coluna da
+                # esquerda. Igualar o minHeight a altura do painel realinha tudo.
+                if ($status_height) {
+                    my $su3 = index($new, "Ext.define('PVE.node.Summary'");
+                    if ($su3 >= 0 && substr($new, $su3, 8000) =~ /(\n[ \t]*minHeight:[ \t]*)(\d+)(,)/) {
+                        my ($pre, $mh) = ($1, $2);
+                        if ($status_height > $mh) {
+                            my $start = $su3 + $-[0];
+                            my $len   = $+[0] - $-[0];
+                            substr($new, $start, $len) =
+                                $pre . $status_height . ", // PVE-SENSORS-MOD minHeight was $mh";
+                            print "OK    minHeight das celulas: $mh -> $status_height (realinha as colunas)\n";
+                        }
+                    } else {
+                        print "WARN  não achei 'minHeight:' no Summary — as colunas podem desalinhar\n";
+                    }
                 }
             }
         } else {
@@ -915,16 +944,18 @@ if [ "$MODE" != "revert" ]; then
     # Estimativa de quantas LINHAS o bloco 'Temperatures' vai ocupar no painel.
     # O StatusView tem altura fixa: se não crescer o suficiente, ele corta as
     # linhas de baixo (Kernel Version, Repository Status...). Cada grupo do
-    # texto ocupa 1 linha, e NVMe/discos quebram a cada ~4 entradas.
+    # texto ocupa 1 linha; com os rótulos curtos cabem ~6 discos/NVMe por linha.
+    # Os 24px de base são a folga para o caso de a janela estar mais estreita
+    # e uma das listas quebrar em duas linhas.
     L=0
     echo "$SLOTS" | grep -q '^cpu'   && L=$((L+1)) || true
     echo "$SLOTS" | grep -q '^gpu'   && L=$((L+1)) || true
     echo "$SLOTS" | grep -q '^board' && L=$((L+1)) || true
     NV="$(echo "$SLOTS" | grep -c '^nvme' || true)"
     DK="$(echo "$SLOTS" | grep -c '^disk' || true)"
-    [ "$NV" -gt 0 ] && L=$((L + (NV + 3) / 4)) || true
-    [ "$DK" -gt 0 ] && L=$((L + (DK + 3) / 4)) || true
-    PANEL_BUMP=$((40 + 22 * L))
+    [ "$NV" -gt 0 ] && L=$((L + (NV + 5) / 6)) || true
+    [ "$DK" -gt 0 ] && L=$((L + (DK + 5) / 6)) || true
+    PANEL_BUMP=$((24 + 22 * L))
     log "bloco de temperaturas: ~$L linha(s) → painel +${PANEL_BUMP}px"
 
     if [ $WITH_GRAPH -eq 1 ]; then
