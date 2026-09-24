@@ -7,24 +7,24 @@
 # ═══════════════════════════════════════════════════════════════
 #
 #  No host Proxmox, como root:
-#    bash scripts/proxmox-enable-sensors.sh
+#    bash proxmox-enable-sensors.sh
 #
 #  Remotamente (da sua máquina):
-#    ssh root@<IP-PROXMOX> "bash -s" < scripts/proxmox-enable-sensors.sh
+#    ssh root@<IP-PROXMOX> "bash -s" < proxmox-enable-sensors.sh
 #
 #  Ver o que seria alterado, sem alterar NADA (mostra o diff):
-#    bash scripts/proxmox-enable-sensors.sh --dry-run
+#    bash proxmox-enable-sensors.sh --dry-run
 #
 #  Ver o estado atual (patcheado? coletor rodando? quais séries?):
-#    bash scripts/proxmox-enable-sensors.sh --status
+#    bash proxmox-enable-sensors.sh --status
 #
 #  Só a linha de texto, sem o gráfico:
-#    bash scripts/proxmox-enable-sensors.sh --no-graph
+#    bash proxmox-enable-sensors.sh --no-graph
 #
 #  Desfazer tudo (mantém o histórico do RRD):
-#    bash scripts/proxmox-enable-sensors.sh --revert
+#    bash proxmox-enable-sensors.sh --revert
 #  Desfazer tudo e apagar o histórico:
-#    bash scripts/proxmox-enable-sensors.sh --revert --purge
+#    bash proxmox-enable-sensors.sh --revert --purge
 #
 # ═══════════════════════════════════════════════════════════════
 #  PRÉ-REQUISITO
