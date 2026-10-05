@@ -17,7 +17,16 @@ jobs:
         run: bash -n proxmox-enable-sensors.sh run.sh
 
       - name: shellcheck
-        run: shellcheck -S warning proxmox-enable-sensors.sh run.sh
+        run: |
+          shellcheck -S warning proxmox-enable-sensors.sh run.sh \
+            packaging/build-deb.sh packaging/pve-sensors \
+            packaging/debian/postinst packaging/debian/prerm packaging/debian/postrm
+
+      - name: build do .deb
+        run: |
+          DEB="$(packaging/build-deb.sh)"
+          dpkg-deb --info "$DEB"
+          dpkg-deb --contents "$DEB"
 
       - name: perl -c nos scripts embutidos
         run: |

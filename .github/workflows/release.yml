@@ -1,0 +1,48 @@
+name: release
+
+# Publica o .deb quando uma tag vX.Y.Z é enviada:
+#   git tag v1.0.0 && git push origin v1.0.0
+# Rodando manualmente (workflow_dispatch) só gera o .deb como artifact.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  deb:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Gera o pacote
+        id: build
+        run: |
+          if [ "$GITHUB_REF_TYPE" = tag ]; then
+            DEB="$(packaging/build-deb.sh "$GITHUB_REF_NAME")"
+          else
+            DEB="$(packaging/build-deb.sh)"
+          fi
+          dpkg-deb --info "$DEB"
+          dpkg-deb --contents "$DEB"
+          # nome fixo para o link .../releases/latest/download/pve-sensors_all.deb
+          cp "$DEB" dist/pve-sensors_all.deb
+          echo "deb=$DEB" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pve-sensors-deb
+          path: dist/*.deb
+
+      - name: Publica a release
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            "${{ steps.build.outputs.deb }}" dist/pve-sensors_all.deb \
+            --title "$GITHUB_REF_NAME" --generate-notes

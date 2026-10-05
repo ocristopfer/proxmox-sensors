@@ -1,0 +1,38 @@
+#!/bin/sh
+set -e
+
+STATE=/var/lib/pve-sensors/applied-args
+
+# Roda o script com as mesmas opções da última instalação. Uma falha aqui não
+# pode deixar o pacote quebrado no dpkg: o próprio script já faz rollback.
+apply() {
+    set --
+    if [ -f "$STATE" ]; then
+        while IFS= read -r a; do [ -n "$a" ] && set -- "$@" "$a"; done < "$STATE"
+    fi
+    /usr/sbin/pve-sensors "$@" \
+        || echo "pve-sensors: não foi possível aplicar (o Proxmox foi mantido como estava). Rode 'pve-sensors' para ver o erro." >&2
+}
+
+case "$1" in
+    configure)
+        modprobe drivetemp 2>/dev/null || true
+        sensors-detect --auto >/dev/null 2>&1 || true
+        if [ -n "${PVE_SENSORS_NO_APPLY:-}" ]; then
+            echo "pve-sensors: PVE_SENSORS_NO_APPLY definido — rode 'pve-sensors' para aplicar."
+        elif [ -z "$2" ] || [ -f "$STATE" ]; then
+            # instalação nova, ou upgrade de uma instalação que estava aplicada
+            apply
+        else
+            echo "pve-sensors: os patches estão desativados — rode 'pve-sensors' para aplicar."
+        fi
+        ;;
+    triggered)
+        if [ -f "$STATE" ]; then
+            echo "pve-sensors: pve-manager atualizado, reaplicando os patches..."
+            apply
+        fi
+        ;;
+esac
+
+exit 0

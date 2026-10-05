@@ -1,0 +1,3 @@
+#!/bin/sh
+# pve-sensors — atalho instalado pelo pacote .deb para o proxmox-enable-sensors.sh
+exec bash /usr/share/pve-sensors/proxmox-enable-sensors.sh "$@"

@@ -1,0 +1,4 @@
+# Upgrade do pve-manager sobrescreve estes arquivos e apaga os patches:
+# o postinst é chamado com "triggered" e os reaplica.
+interest-noawait /usr/share/pve-manager/js/pvemanagerlib.js
+interest-noawait /usr/share/perl5/PVE/API2/Nodes.pm
