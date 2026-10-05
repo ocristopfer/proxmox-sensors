@@ -3,6 +3,15 @@ set -e
 
 # Only on removal: on an upgrade the new version's postinst re-applies.
 if [ "$1" = "remove" ]; then
+    # The revert forgets the applied options; keep them so that installing the
+    # package again (from the "rc" state, which postinst sees as an upgrade)
+    # re-applies instead of treating the patches as disabled.
+    mkdir -p /var/lib/pve-sensors
+    if [ -f /var/lib/pve-sensors/applied-args ]; then
+        cp /var/lib/pve-sensors/applied-args /var/lib/pve-sensors/applied-args.removed
+    else
+        : > /var/lib/pve-sensors/applied-args.removed
+    fi
     if [ -f /etc/systemd/system/pve-sensors-collect.service ] \
        || grep -qs PVE-SENSORS /usr/share/perl5/PVE/API2/Nodes.pm /usr/share/pve-manager/js/pvemanagerlib.js; then
         /usr/sbin/pve-sensors --revert || echo "pve-sensors: revert failed; see the restore script in /root/pve-sensors-mod/<date>/" >&2

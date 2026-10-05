@@ -16,6 +16,10 @@ apply() {
 
 case "$1" in
     configure)
+        # reinstall after 'apt remove': restore the options prerm kept
+        if [ -f "$STATE.removed" ]; then
+            mv -f "$STATE.removed" "$STATE"
+        fi
         modprobe drivetemp 2>/dev/null || true
         sensors-detect --auto >/dev/null 2>&1 || true
         if [ -n "${PVE_SENSORS_NO_APPLY:-}" ]; then

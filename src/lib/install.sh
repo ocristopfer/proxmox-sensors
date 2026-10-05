@@ -63,7 +63,9 @@ install_collector() {
   INSTALLED_COLLECTOR=1
   "$COLLECTOR" --once || die "the collector failed on its first run"
   systemctl daemon-reload
-  systemctl enable --now "$UNIT_NAME"
+  systemctl enable "$UNIT_NAME"
+  # restart, not --now: on a re-install the old collector would keep running
+  systemctl restart "$UNIT_NAME"
   systemctl is-active --quiet "$UNIT_NAME" || die "the $UNIT_NAME service did not start"
   ok "pve-sensors-collect active — RRD at $DATA_DIR/sensors.rrd"
 }
