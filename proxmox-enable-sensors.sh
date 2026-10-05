@@ -106,10 +106,20 @@ for arg in "$@"; do
     --no-graph) WITH_GRAPH=0 ;;
     --purge)    PURGE=1 ;;
     --panel-height=*) PANEL_HEIGHT="${arg#*=}" ;;
-    -h|--help)  awk 'NR==1{next} /^set -euo pipefail$/{exit} {print}' "$0"; exit 0 ;;
+    -h|--help)
+      if [ -r "$0" ] && [ "$(head -c 2 "$0")" = "#!" ]; then
+        awk 'NR==1{next} /^set -euo pipefail$/{exit} {print}' "$0"
+      else
+        echo "uso: proxmox-enable-sensors.sh [--dry-run|--status|--revert [--purge]] [--no-graph] [--panel-height=N]"
+      fi
+      exit 0 ;;
     *) echo "Argumento desconhecido: $arg (use --help)" >&2; exit 1 ;;
   esac
 done
+
+if [ "$PURGE" -eq 1 ] && [ "$MODE" != "revert" ]; then
+  echo "--purge só faz sentido junto com --revert" >&2; exit 1
+fi
 
 # =============================================================================
 # Helpers
@@ -227,11 +237,13 @@ if [ "$MODE" != "revert" ]; then
 
   [ -x "$SENSORS_BIN" ] || die "'$SENSORS_BIN' não existe. Rode antes: apt install -y lm-sensors && sensors-detect --auto"
 
-  if ! "$SENSORS_BIN" -j 2>/dev/null | perl -MJSON::PP -e 'local $/; decode_json(<STDIN>);' 2>/dev/null; then
+  # mesma tolerância do coletor: alguns lm-sensors emitem vírgula sobrando
+  SENSORS_JSON="$(timeout 10 "$SENSORS_BIN" -j 2>/dev/null | sed -E ':a;N;$!ba;s/,[[:space:]]*([]}])/\1/g' || true)"
+  if ! printf '%s' "$SENSORS_JSON" | perl -MJSON::PP -e 'local $/; decode_json(<STDIN>);' 2>/dev/null; then
     die "'sensors -j' não devolveu JSON válido. Confira a saída de: sensors -j"
   fi
 
-  CHIPS="$("$SENSORS_BIN" -j 2>/dev/null | perl -MJSON::PP -e 'local $/; my $d = decode_json(<STDIN>); print join(", ", sort keys %$d);')"
+  CHIPS="$(printf '%s' "$SENSORS_JSON" | perl -MJSON::PP -e 'local $/; my $d = decode_json(<STDIN>); print join(", ", sort keys %$d);')"
   ok "Chips detectados: ${CHIPS:-nenhum}"
   [ -n "$CHIPS" ] || warn "Nenhum chip — a linha vai aparecer como N/A até o sensors-detect achar algo"
 
@@ -592,7 +604,9 @@ TasksMax=16
 PrivateTmp=true
 ProtectHome=true
 NoNewPrivileges=true
-ReadWritePaths=/var/lib/pve-sensors
+# / somente leitura; só o diretório do RRD é gravável (o systemd o cria)
+ProtectSystem=strict
+StateDirectory=pve-sensors
 
 [Install]
 WantedBy=multi-user.target

@@ -52,4 +52,7 @@ elif ! ssh -n "$HOST" 'command -v sensors >/dev/null'; then
   die "lm-sensors não está instalado em $HOST — rode de novo com --setup"
 fi
 
-ssh "$HOST" "bash -s -- ${ARGS[*]:-}" < "$SCRIPT"
+# %q: cada argumento chega ao host remoto exatamente como foi digitado
+REMOTE_ARGS=""
+[ ${#ARGS[@]} -gt 0 ] && REMOTE_ARGS="$(printf ' %q' "${ARGS[@]}")"
+ssh "$HOST" "bash -s --$REMOTE_ARGS" < "$SCRIPT"
