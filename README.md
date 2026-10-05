@@ -28,3 +28,7 @@ Depois de aplicar, recarregue a UI com Ctrl+F5.
 
 Depois de um `apt upgrade` que atualize o `pve-manager`, rode de novo: os
 patches somem, o histórico do RRD não.
+
+## Licença
+
+[MIT](LICENSE)
