@@ -6,7 +6,7 @@ Depends: pve-manager, perl, lm-sensors, librrds-perl, systemd
 Section: admin
 Priority: optional
 Homepage: https://github.com/ocristopfer/proxmox-sensors
-Description: Temperaturas (CPU/GPU/NVMe/HDD) no Summary do nó do Proxmox VE
- Adiciona a linha "Temperatures" no Summary do nó e um gráfico histórico
- junto dos de CPU/Rede/RAM. Os patches são reaplicados automaticamente
- quando um upgrade do pve-manager os remove.
+Description: CPU/GPU/NVMe/HDD temperatures in the Proxmox VE node Summary
+ Adds a "Temperatures" line to the node Summary and a history chart next to
+ the CPU/Network/RAM ones. The patches are re-applied automatically when a
+ pve-manager upgrade removes them.

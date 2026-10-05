@@ -1,0 +1,239 @@
+#!/usr/bin/perl
+# pve-sensors-collect — installed by proxmox-enable-sensors.sh (src/collector).
+#
+#   --list     prints "slot<TAB>label" for the series that have a reading now
+#   --once     collects once and exits
+#   --daemon   collects every minute (aligned to the full minute)
+use strict;
+use warnings;
+use JSON::PP;
+# RRDs is only loaded when we touch the RRD, so that '--list' works even on a
+# host where librrds-perl isn't installed yet (and therefore so that
+# --dry-run can show which series would be plotted).
+
+my $DATA_DIR   = '/var/lib/pve-sensors';
+my $RRD        = "$DATA_DIR/sensors.rrd";
+# overridable through the environment only for tests; the service never sets them
+my $SENSORS    = $ENV{SENSORS_BIN} || '/usr/bin/sensors';
+my $NVIDIA_SMI = $ENV{NVIDIA_SMI}  || '/usr/bin/nvidia-smi';
+my $STEP       = 60;
+
+# Fixed schema. Changing this list requires recreating the RRD (loses history).
+my @DS = qw(
+    cpu cpu_max board
+    gpu0 gpu1
+    nvme0 nvme1 nvme2 nvme3
+    disk0 disk1 disk2 disk3 disk4 disk5 disk6 disk7
+);
+
+# Plausible range, in degrees C. Super-I/O chips (nct*, it87*) publish
+# unconnected channels with garbage -- on a real nct6779: CPUTIN=-125,
+# AUXTIN2=107, PCH_CHIP_TEMP=0. Readings outside this range are dropped.
+my $T_MIN = 5;
+my $T_MAX = 105;
+
+# ---------------------------------------------------------------- reading
+sub read_sensors {
+    # timeout: a stuck sensor must never hang the collector forever
+    my $json = `timeout 10 $SENSORS -j 2>/dev/null`;
+    return {} if !defined $json || $json !~ /\S/;
+    # some lm-sensors versions emit a trailing comma before } or ]
+    $json =~ s/,\s*([}\]])/$1/g;
+    my $d = eval { decode_json($json) };
+    return ref($d) eq 'HASH' ? $d : {};
+}
+
+# returns ( [label, value], ... ) for a chip's temperature features
+sub chip_temps {
+    my ($feats) = @_;
+    my @out;
+    foreach my $label (sort keys %$feats) {
+        my $f = $feats->{$label};
+        next if ref($f) ne 'HASH';
+        foreach my $k (sort keys %$f) {
+            next if $k !~ /^temp\d+_input$/;
+            my $v = $f->{$k};
+            next if !defined $v || $v !~ /^-?\d+(\.\d+)?$/;
+            $v += 0;
+            next if $v < $T_MIN || $v > $T_MAX;
+            push @out, [ $label, $v ];
+            last;
+        }
+    }
+    return @out;
+}
+
+sub classify {
+    my ($chip) = @_;
+    return 'cpu'   if $chip =~ /^(coretemp|k10temp|k8temp|zenpower)/;
+    return 'gpu'   if $chip =~ /^(amdgpu|radeon|nouveau|i915|xe)/;
+    return 'nvme'  if $chip =~ /^nvme/;
+    return 'disk'  if $chip =~ /^drivetemp/;
+    return 'board' if $chip =~ /^(acpitz|nct|it8|w836|jc42|smsc)/;
+    return undef;
+}
+
+sub nvidia_temps {
+    return () if !-x $NVIDIA_SMI;
+    my $out = `timeout 10 $NVIDIA_SMI --query-gpu=name,temperature.gpu --format=csv,noheader,nounits 2>/dev/null`;
+    return () if !defined $out;
+    my @g;
+    foreach my $line (split /\n/, $out) {
+        next if $line !~ /^\s*(.+?)\s*,\s*(\d+)\s*$/;
+        push @g, [ $1, $2 + 0 ];
+    }
+    return @g;
+}
+
+# Builds { slot => value } and { slot => label } from the current reading.
+sub collect {
+    my $data = read_sensors();
+    my (%val, %label);
+
+    my (@cpu, @board, @gpu, @nvme, @disk);
+    foreach my $chip (sort keys %$data) {
+        my $feats = $data->{$chip};
+        next if ref($feats) ne 'HASH';
+        my $kind = classify($chip);
+        next if !defined $kind;
+        my @t = chip_temps($feats);
+        next if !@t;
+        push @cpu,   [ $chip, \@t ] if $kind eq 'cpu';
+        push @board, [ $chip, \@t ] if $kind eq 'board';
+        push @gpu,   [ $chip, \@t ] if $kind eq 'gpu';
+        push @nvme,  [ $chip, \@t ] if $kind eq 'nvme';
+        push @disk,  [ $chip, \@t ] if $kind eq 'disk';
+    }
+
+    # CPU: 'cpu' = Package/Tctl/Tdie (else the highest); 'cpu_max' = highest of all
+    if (@cpu) {
+        my (@pkg, @all);
+        foreach my $c (@cpu) {
+            foreach my $t (@{ $c->[1] }) {
+                push @all, $t->[1];
+                push @pkg, $t->[1] if $t->[0] =~ /^(Package id|Tctl|Tdie)/i;
+            }
+        }
+        my @src = @pkg ? @pkg : @all;
+        $val{cpu}       = (sort { $b <=> $a } @src)[0];
+        $val{cpu_max}   = (sort { $b <=> $a } @all)[0];
+        # short labels: they become the chart legend, which sits on a
+        # single line and cuts whatever doesn't fit
+        $label{cpu}     = 'CPU';
+        $label{cpu_max} = 'CPU max';
+    }
+
+    if (@board) {
+        my @cand = map { @{ $_->[1] } } @board;
+        # on an nct6779/it87 the board sensor is SYSTIN; the AUXTIN* are
+        # usually channels with nothing connected. Prefer the named one if any.
+        my @pref = grep { $_->[0] =~ /^(SYSTIN|System|MB|Motherboard|board)/i } @cand;
+        @cand = @pref if @pref;
+        $val{board}   = (sort { $b <=> $a } map { $_->[1] } @cand)[0];
+        $label{board} = 'Board';
+    }
+
+    # GPU: Nvidia first (it doesn't show up in lm-sensors), then amdgpu/etc
+    my $gi = 0;
+    foreach my $n (nvidia_temps()) {
+        last if $gi > 1;
+        $val{"gpu$gi"}   = $n->[1];
+        $label{"gpu$gi"} = "GPU $gi";
+        $gi++;
+    }
+    foreach my $c (@gpu) {
+        last if $gi > 1;
+        my @all = map { $_->[1] } @{ $c->[1] };
+        $val{"gpu$gi"}   = (sort { $b <=> $a } @all)[0];
+        $label{"gpu$gi"} = "GPU $gi";
+        $gi++;
+    }
+
+    # NVMe: prefer the 'Composite' feature
+    my $ni = 0;
+    foreach my $c (@nvme) {
+        last if $ni > 3;
+        my @comp = grep { $_->[0] =~ /^Composite/i } @{ $c->[1] };
+        my @src  = @comp ? @comp : @{ $c->[1] };
+        $val{"nvme$ni"}   = (sort { $b <=> $a } map { $_->[1] } @src)[0];
+        $label{"nvme$ni"} = "NVMe $ni";
+        $ni++;
+    }
+
+    my $di = 0;
+    foreach my $c (@disk) {
+        last if $di > 7;
+        my $short = $c->[0];
+        $short =~ s/^drivetemp-//;
+        $val{"disk$di"}   = (sort { $b <=> $a } map { $_->[1] } @{ $c->[1] })[0];
+        $label{"disk$di"} = $short;
+        $di++;
+    }
+
+    return (\%val, \%label);
+}
+
+# ---------------------------------------------------------------- RRD
+sub ensure_rrd {
+    require RRDs;
+    return if -f $RRD;
+    mkdir $DATA_DIR if !-d $DATA_DIR;
+    my @args = ($RRD, '--step', $STEP);
+    # GAUGE, heartbeat 2x the step, range 0..200 °C drops absurd readings
+    push @args, map { "DS:$_:GAUGE:" . ($STEP * 2) . ":0:200" } @DS;
+    # Same resolutions as the PVE RRD, so the merge matches timestamp by timestamp
+    foreach my $cf (qw(AVERAGE MAX)) {
+        push @args,
+            "RRA:$cf:0.5:1:1500",       # ~25 h  @ 1 min
+            "RRA:$cf:0.5:30:1500",      # ~31 d  @ 30 min
+            "RRA:$cf:0.5:180:1500",     # ~187 d @ 3 h
+            "RRA:$cf:0.5:720:1500",     # ~2 y   @ 12 h
+            "RRA:$cf:0.5:10080:400";    # ~7 y   @ 1 week
+    }
+    RRDs::create(@args);
+    my $err = RRDs::error();
+    die "error creating $RRD: $err\n" if $err;
+}
+
+sub update_rrd {
+    my ($val) = @_;
+    require RRDs;
+    ensure_rrd();
+    my @present = grep { defined $val->{$_} } @DS;
+    return if !@present;
+    RRDs::update($RRD, '--template', join(':', @present),
+        'N:' . join(':', map { $val->{$_} } @present));
+    my $err = RRDs::error();
+    warn "error updating $RRD: $err\n" if $err;
+}
+
+# ---------------------------------------------------------------- main
+my $mode = $ARGV[0] // '--once';
+
+if ($mode eq '--list') {
+    my ($val, $label) = collect();
+    foreach my $ds (@DS) {
+        next if !defined $val->{$ds};
+        print "$ds\t" . ($label->{$ds} // $ds) . "\n";
+    }
+    exit 0;
+}
+
+if ($mode eq '--once') {
+    my ($val) = collect();
+    update_rrd($val);
+    exit 0;
+}
+
+if ($mode eq '--daemon') {
+    $SIG{TERM} = $SIG{INT} = sub { exit 0 };
+    while (1) {
+        my ($val) = collect();
+        eval { update_rrd($val); 1 } or warn $@;
+        # sleep until the next full minute (avoids gaps in the RRD from drift)
+        my $now = time();
+        sleep($STEP - ($now % $STEP));
+    }
+}
+
+die "usage: $0 [--list|--once|--daemon]\n";

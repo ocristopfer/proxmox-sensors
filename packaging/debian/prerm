@@ -1,11 +1,11 @@
 #!/bin/sh
 set -e
 
-# Só na remoção: num upgrade o postinst da versão nova reaplica.
+# Only on removal: on an upgrade the new version's postinst re-applies.
 if [ "$1" = "remove" ]; then
     if [ -f /etc/systemd/system/pve-sensors-collect.service ] \
        || grep -qs PVE-SENSORS /usr/share/perl5/PVE/API2/Nodes.pm /usr/share/pve-manager/js/pvemanagerlib.js; then
-        /usr/sbin/pve-sensors --revert || echo "pve-sensors: o revert falhou; veja o RESTAURAR.sh em /root/pve-sensors-mod/" >&2
+        /usr/sbin/pve-sensors --revert || echo "pve-sensors: revert failed; see the restore script in /root/pve-sensors-mod/<date>/" >&2
     fi
 fi
 

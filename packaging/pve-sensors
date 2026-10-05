@@ -1,3 +1,3 @@
 #!/bin/sh
-# pve-sensors — atalho instalado pelo pacote .deb para o proxmox-enable-sensors.sh
-exec bash /usr/share/pve-sensors/proxmox-enable-sensors.sh "$@"
+# pve-sensors — command installed by the .deb package; runs proxmox-enable-sensors.sh
+PVE_SENSORS_SELF=pve-sensors exec bash /usr/share/pve-sensors/proxmox-enable-sensors.sh "$@"

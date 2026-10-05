@@ -1,0 +1,2 @@
+#!/bin/sh
+echo "pve-manager/8.2.4/faa83925c9641325 (running kernel: 6.8.12-1-pve)"

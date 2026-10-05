@@ -1,0 +1,27 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Lint
+        run: make lint
+
+      - name: Tests
+        # root: the --dry-run end-to-end test needs it
+        run: sudo env "PATH=$PATH" make test
+
+      - name: Build the .deb
+        run: |
+          DEB="$(packaging/build-deb.sh)"
+          dpkg-deb --info "$DEB"
+          dpkg-deb --contents "$DEB"

@@ -1,0 +1,24 @@
+[Unit]
+Description=Temperature collector for the Proxmox charts
+Documentation=file:///usr/local/bin/pve-sensors-collect
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/pve-sensors-collect --daemon
+Restart=always
+RestartSec=10
+Nice=10
+IOSchedulingClass=idle
+# Must never be able to take down the host
+MemoryMax=64M
+TasksMax=16
+PrivateTmp=true
+ProtectHome=true
+NoNewPrivileges=true
+# / read-only; only the RRD directory is writable (systemd creates it)
+ProtectSystem=strict
+StateDirectory=pve-sensors
+
+[Install]
+WantedBy=multi-user.target

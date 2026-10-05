@@ -1,8 +1,8 @@
 name: release
 
-# Publica o .deb quando uma tag vX.Y.Z é enviada:
+# Publishes the .deb when a vX.Y.Z tag is pushed:
 #   git tag v1.0.0 && git push origin v1.0.0
-# Rodando manualmente (workflow_dispatch) só gera o .deb como artifact.
+# A manual run (workflow_dispatch) only builds the .deb as an artifact.
 on:
   push:
     tags: ['v*']
@@ -19,7 +19,12 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Gera o pacote
+      - name: Lint and test
+        run: |
+          make lint
+          sudo env "PATH=$PATH" make test
+
+      - name: Build the package
         id: build
         run: |
           if [ "$GITHUB_REF_TYPE" = tag ]; then
@@ -29,7 +34,7 @@ jobs:
           fi
           dpkg-deb --info "$DEB"
           dpkg-deb --contents "$DEB"
-          # nome fixo para o link .../releases/latest/download/pve-sensors_all.deb
+          # fixed name for the .../releases/latest/download/pve-sensors_all.deb link
           cp "$DEB" dist/pve-sensors_all.deb
           echo "deb=$DEB" >> "$GITHUB_OUTPUT"
 
@@ -38,7 +43,7 @@ jobs:
           name: pve-sensors-deb
           path: dist/*.deb
 
-      - name: Publica a release
+      - name: Publish the release
         if: github.ref_type == 'tag'
         env:
           GH_TOKEN: ${{ github.token }}
