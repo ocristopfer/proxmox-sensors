@@ -116,9 +116,9 @@ make test        # offline tests (run as root to include the --dry-run end-to-en
 make deb         # builds dist/pve-sensors_<version>_all.deb
 ```
 
-A release is published by pushing a tag: `git tag v1.2.3 && git push origin v1.2.3`.
-The `release` workflow runs the tests, builds the `.deb` and attaches it to the
-GitHub release.
+A release is published by pushing a tag (`git tag v1.2.3 && git push origin v1.2.3`)
+or from **Actions → release → Run workflow** with the version. The `release`
+workflow runs the tests, builds the `.deb` and attaches it to the GitHub release.
 
 ## License
 

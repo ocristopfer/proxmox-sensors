@@ -1,12 +1,18 @@
 name: release
 
-# Publishes the .deb when a vX.Y.Z tag is pushed:
-#   git tag v1.0.0 && git push origin v1.0.0
-# A manual run (workflow_dispatch) only builds the .deb as an artifact.
+# Publishes the .deb as a GitHub release, either:
+#   - by pushing a tag:   git tag v1.0.0 && git push origin v1.0.0
+#   - or from Actions > release > Run workflow, with a version (creates the tag)
+# A manual run without a version only builds the .deb as an artifact.
 on:
   push:
     tags: ['v*']
   workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release, e.g. 1.0.0 (empty = build only)'
+        required: false
+        default: ''
 
 permissions:
   contents: write
@@ -24,11 +30,28 @@ jobs:
           make lint
           sudo env "PATH=$PATH" make test
 
-      - name: Build the package
-        id: build
+      - name: Resolve the version
+        id: version
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
         run: |
           if [ "$GITHUB_REF_TYPE" = tag ]; then
-            DEB="$(packaging/build-deb.sh "$GITHUB_REF_NAME")"
+            TAG="$GITHUB_REF_NAME"
+          elif [ -n "$INPUT_VERSION" ]; then
+            TAG="v${INPUT_VERSION#v}"
+            case "$TAG" in v[0-9]*.[0-9]*.[0-9]*) ;; *) echo "invalid version: $INPUT_VERSION" >&2; exit 1 ;; esac
+          else
+            TAG=""
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Build the package
+        id: build
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          if [ -n "$TAG" ]; then
+            DEB="$(packaging/build-deb.sh "$TAG")"
           else
             DEB="$(packaging/build-deb.sh)"
           fi
@@ -44,10 +67,12 @@ jobs:
           path: dist/*.deb
 
       - name: Publish the release
-        if: github.ref_type == 'tag'
+        if: steps.version.outputs.tag != ''
         env:
           GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.version.outputs.tag }}
+          DEB: ${{ steps.build.outputs.deb }}
         run: |
-          gh release create "$GITHUB_REF_NAME" \
-            "${{ steps.build.outputs.deb }}" dist/pve-sensors_all.deb \
-            --title "$GITHUB_REF_NAME" --generate-notes
+          # --target creates the tag on this commit when it doesn't exist yet
+          gh release create "$TAG" "$DEB" dist/pve-sensors_all.deb \
+            --target "$GITHUB_SHA" --title "$TAG" --generate-notes
