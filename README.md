@@ -10,6 +10,8 @@ CPU / GPU / NVMe / HDD temperatures in the Proxmox VE web UI:
 - a **temperature history chart** next to the CPU / Network / RAM charts
   (hour, day, week, month and year views).
 
+![Node Summary with the Temperatures line and chart](docs/screenshot.png)
+
 Targets Proxmox VE 7, 8 and 9 — the patchers refuse to touch files they don't recognise.
 
 ## Installation (recommended: .deb package)
