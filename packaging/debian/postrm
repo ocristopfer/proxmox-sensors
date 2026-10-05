@@ -1,0 +1,9 @@
+#!/bin/sh
+set -e
+
+# purge apaga o histórico do RRD; os backups em /root/pve-sensors-mod ficam.
+if [ "$1" = "purge" ]; then
+    rm -rf /var/lib/pve-sensors
+fi
+
+exit 0

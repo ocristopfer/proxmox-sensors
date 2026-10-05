@@ -93,6 +93,9 @@ UNIT_FILE="${UNIT_FILE:-/etc/systemd/system/$UNIT_NAME}"
 DATA_DIR="${DATA_DIR:-/var/lib/pve-sensors}"
 SENSORS_BIN="${SENSORS_BIN:-/usr/bin/sensors}"
 BACKUP_ROOT="${BACKUP_ROOT:-/root/pve-sensors-mod}"
+# Opções da última instalação. O pacote .deb usa este arquivo para reaplicar
+# os patches sozinho quando um upgrade do pve-manager os remove.
+STATE_FILE="${STATE_FILE:-$DATA_DIR/applied-args}"
 
 MODE="patch"
 WITH_GRAPH=1
@@ -202,6 +205,12 @@ if [ "$MODE" = "status" ]; then
     echo "  RRD:     $DATA_DIR/sensors.rrd ($(du -h "$DATA_DIR/sensors.rrd" | cut -f1))"
   fi
   [ -x "$COLLECTOR" ] && { echo "  Séries:"; "$COLLECTOR" --list 2>/dev/null | sed 's/^/            /'; }
+  echo ""
+  if [ -f "$STATE_FILE" ]; then
+    echo "  Reaplicar após upgrade: sim (opções: $(tr '\n' ' ' < "$STATE_FILE"))"
+  else
+    echo "  Reaplicar após upgrade: não"
+  fi
   echo ""
   echo "  Backups: $BACKUP_ROOT"
   ls -1 "$BACKUP_ROOT" 2>/dev/null | sed 's/^/            /' || echo "            (nenhum)"
@@ -1186,6 +1195,15 @@ if [ "$MODE" = "patch" ]; then
 fi
 
 ARMED=0   # deu tudo certo; desarma o rollback automático
+
+if [ "$MODE" = "patch" ]; then
+  mkdir -p "$(dirname "$STATE_FILE")"
+  # só --no-graph / --panel-height chegam aqui; o resto já saiu antes
+  : > "$STATE_FILE"
+  for arg in "$@"; do printf '%s\n' "$arg" >> "$STATE_FILE"; done
+else
+  rm -f "$STATE_FILE"
+fi
 
 # =============================================================================
 # 9. RELATÓRIO

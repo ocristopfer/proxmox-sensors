@@ -6,7 +6,31 @@ Summary do nó + gráfico histórico junto dos de CPU/Rede/RAM.
 Tudo — pré-requisitos, o que é alterado, garantias de segurança e rollback —
 está documentado no cabeçalho de [`proxmox-enable-sensors.sh`](proxmox-enable-sensors.sh).
 
-## Uso
+## Instalação pelo pacote (recomendado)
+
+No host Proxmox, como root:
+
+```bash
+wget https://github.com/ocristopfer/proxmox-sensors/releases/latest/download/pve-sensors_all.deb
+apt install ./pve-sensors_all.deb
+```
+
+O pacote instala as dependências (`lm-sensors`, `librrds-perl`), carrega o
+`drivetemp`, aplica os patches e reinicia a UI. Depois recarregue com Ctrl+F5.
+
+- **Upgrade do `pve-manager`:** os patches são reaplicados sozinhos (com as
+  mesmas opções da última vez), sem precisar rodar nada.
+- **Comandos:** `pve-sensors --status`, `pve-sensors --dry-run`,
+  `pve-sensors --no-graph`, `pve-sensors --revert` (desativa até você rodar
+  `pve-sensors` de novo).
+- **Desinstalar:** `apt remove pve-sensors` desfaz os patches e mantém o
+  histórico; `apt purge pve-sensors` apaga o histórico também.
+- Para instalar sem aplicar: `PVE_SENSORS_NO_APPLY=1 apt install ./pve-sensors_all.deb`.
+
+Para gerar o pacote localmente: `packaging/build-deb.sh` (sai em `dist/`).
+Uma release nova sai ao enviar uma tag: `git tag v1.0.0 && git push origin v1.0.0`.
+
+## Uso sem o pacote (via SSH)
 
 Da sua máquina, com acesso SSH de root ao host:
 
