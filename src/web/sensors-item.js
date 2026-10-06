@@ -1,3 +1,10 @@
+// sensors-item.js — the "Temperatures" item of the node Summary (PVE.node.StatusView).
+// patch-pvemanagerlib.pl inserts only the lines between the PVE-SENSORS-MOD
+// markers, right after the CPU(s) item; the array around them only keeps this
+// file valid JavaScript for linters and code scanning.
+/* global gettext, Ext */
+// eslint-disable-next-line no-unused-vars
+const pveSensorsItem = [
 	// PVE-SENSORS-MOD-BEGIN
 	{
 	    itemId: 'thermal',
@@ -71,3 +78,4 @@
 	    },
 	},
 	// PVE-SENSORS-MOD-END
+];

@@ -50,6 +50,10 @@ my $new = $base;
 # ---- patch A: text line in the StatusView ------------------------------
 open(my $sf, '<', $snippet_file) or die "could not read $snippet_file: $!\n";
 my $snippet = do { local $/; <$sf> }; close $sf;
+# the file is valid JS for linters; only the lines between the markers go in
+$snippet =~ /^([ \t]*\/\/ PVE-SENSORS-MOD-BEGIN\n.*^[ \t]*\/\/ PVE-SENSORS-MOD-END\n)/sm
+    or die "could not find the PVE-SENSORS-MOD markers in $snippet_file\n";
+$snippet = $1;
 
 my $sv = index($new, "Ext.define('PVE.node.StatusView'");
 die "could not find 'PVE.node.StatusView' in $file — incompatible PVE version\n" if $sv < 0;
